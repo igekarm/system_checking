@@ -1,0 +1,1 @@
+[{"name":"Cerber_Проверка времени","sql":"select r.elapsed_time, r.session_id, r.job_name, j.job_action, j.repeat_interval, r.*, j.*\nfrom dba_scheduler_running_jobs r    \njoin dba_scheduler_jobs j on j.job_name = r.job_name\norder by 2","createdAt":[2025,4,30,22,2,14,709003500]}]
