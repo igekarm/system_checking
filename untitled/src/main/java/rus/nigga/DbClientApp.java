@@ -7,6 +7,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.ListChangeListener;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -48,7 +49,7 @@ import java.util.prefs.Preferences;
 public class DbClientApp extends Application {
 
     private List<DbConnectionInfo> connections = new ArrayList<>();
-    private ListView<DbConnectionInfo> connectionListView;
+    private ComboBox<DbConnectionInfo> connectionSelector;
     private List<SavedQuery> savedQueries = new ArrayList<>();
     private ComboBox<SavedQuery> querySelector;
     private Connection currentConnection;
@@ -57,6 +58,7 @@ public class DbClientApp extends Application {
     private TableView<List<String>> resultTable;
     private TextArea logArea;
     private Scene scene;
+    private ImageView loadingGifView;
 
     private String currentTheme = "light";
     private double currentFontSize = 12;
@@ -69,99 +71,104 @@ public class DbClientApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("DB Client");
+        primaryStage.setTitle("DB AlertSnap v 0.1a");
         primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
         BorderPane root = new BorderPane();
 
-        // Список подключений
-        connectionListView = new ListView<>();
-        connectionListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> connectToDatabase());
-        enableConnectionDnD();
+        // --- CONNECTION BLOCK ---
+        connectionSelector = new ComboBox<>();
+        connectionSelector.setPromptText("Выберите подключение");
+        connectionSelector.setOnAction(e -> connectToDatabase());
+        connectionSelector.setPrefWidth(400);  // фиксированная ширина
 
         Button addConnectionButton = new Button("Создать подключение");
         addConnectionButton.setOnAction(e -> openAddConnectionDialog(primaryStage));
+        addConnectionButton.setPrefWidth(150);
+        addConnectionButton.setMinWidth(150);
+        addConnectionButton.setMaxWidth(150);
 
         Button testConnectionButton = new Button("Тест подключения");
         testConnectionButton.setOnAction(e -> testConnection());
+        testConnectionButton.setPrefWidth(150);
+        testConnectionButton.setMinWidth(150);
+        testConnectionButton.setMaxWidth(150);
 
         Button deleteConnectionButton = new Button("Удалить подключение");
         deleteConnectionButton.setOnAction(e -> deleteSelectedConnection());
+        deleteConnectionButton.setPrefWidth(150);
+        deleteConnectionButton.setMinWidth(150);
+        deleteConnectionButton.setMaxWidth(150);
 
-        VBox connectionSection = new VBox(10,
-                new HBox(10, addConnectionButton, testConnectionButton, deleteConnectionButton),
-                new Label("Подключения:"),
-                connectionListView
-        );
-        /**
-         * Ширина правой панели (подключения + кнопки)
-         * connectionSection.setPrefWidth(300);
-         */
-        connectionSection.setPadding(new Insets(10));
-        connectionSection.setPrefWidth(300);
+        HBox connectionBox = new HBox(10, connectionSelector, addConnectionButton, testConnectionButton, deleteConnectionButton);
+        connectionBox.setPadding(new Insets(10));
 
-        // Выпадающий список запросов и кнопки
+        // --- QUERY BLOCK ---
         querySelector = new ComboBox<>();
         querySelector.setPromptText("Выберите запрос");
         querySelector.setOnAction(e -> loadSelectedQuery());
+        querySelector.setPrefWidth(400);       // другая ширина, если нужно
 
         Button saveQueryButton = new Button("Сохранить запрос");
         saveQueryButton.setOnAction(e -> saveCurrentQuery());
+        saveQueryButton.setPrefWidth(150);
+        saveQueryButton.setMinWidth(150);
+        saveQueryButton.setMaxWidth(150);
 
         Button executeQueryButton = new Button("Выполнить запрос");
-        executeQueryButton.setOnAction(e -> executeQuery());
+        executeQueryButton.setOnAction(e -> executeQueryAsync());
+        executeQueryButton.setPrefWidth(150);
+        executeQueryButton.setMinWidth(150);
+        executeQueryButton.setMaxWidth(150);
 
         Button deleteQueryButton = new Button("Удалить запрос");
         deleteQueryButton.setOnAction(e -> deleteSelectedQuery());
+        deleteQueryButton.setPrefWidth(150);
+        deleteQueryButton.setMinWidth(150);
+        deleteQueryButton.setMaxWidth(150);
 
         HBox queryBox = new HBox(10, querySelector, saveQueryButton, executeQueryButton, deleteQueryButton);
         queryBox.setPadding(new Insets(10));
-/**
- * Изменение высоты окна ввода запроса
- * queryArea.setPrefHeight(200);
- */
-        queryArea = new TextArea();
-        queryArea.setPrefHeight(400);
-        queryArea.setWrapText(true);
 
-        VBox querySection = new VBox(10,
-                new HBox(10, querySelector, saveQueryButton, executeQueryButton, deleteQueryButton),
-                new Label("SQL-запрос:"),
-                queryArea
-        );
-        /**
-         * Ширина левой панели (редактор + кнопки)
-         * querySection.setPrefWidth(700);
-         */
-        querySection.setPadding(new Insets(10));
-        querySection.setPrefWidth(700);
-
-        HBox topContent = new HBox(10, querySection, connectionSection);
-
-        // Настройки
-//        Button settingsButton = new Button("⚙");
+        // --- SETTINGS BUTTON ---
         Image settingsIcon = new Image(getClass().getResourceAsStream("/settings_icon.png"));
         ImageView settingsIconView = new ImageView(settingsIcon);
         Button settingsButton = new Button("", settingsIconView);
         settingsButton.setStyle("-fx-background-color: transparent;");
         settingsButton.setOnAction(e -> openSettingsDialog(primaryStage));
 
+        // --- TOP BAR: vertically stacked connection + query + settings ---
+        VBox leftTopArea = new VBox(10, connectionBox, queryBox);
         BorderPane topBar = new BorderPane();
-        topBar.setLeft(topContent);
+        topBar.setLeft(leftTopArea);
         topBar.setRight(settingsButton);
         BorderPane.setMargin(settingsButton, new Insets(10));
 
-        /**Высота окна вывода результата запроса
-         * resultTable.setPrefHeight(400);
-         */
-        // Таблица результатов
-        resultTable = new TableView<>();
-        resultTable.setPrefHeight(500);
+        // --- CENTER ---
+        queryArea = new TextArea();
+        queryArea.setPrefHeight(150);
+        queryArea.setWrapText(true);
 
-        centerArea = new VBox(10, resultTable);
+        resultTable = new TableView<>();
+        resultTable.setPrefHeight(400);
+
+        // === Инициализация loadingGifView ДО использования ===
+        loadingGifView = new ImageView(new Image(getClass().getResourceAsStream("/loading.gif")));
+        loadingGifView.setPreserveRatio(true);
+        loadingGifView.setFitHeight(64); // или другое подходящее значение
+        loadingGifView.setVisible(false);
+        loadingGifView.setManaged(false);
+
+        // === StackPane для наложения анимации поверх таблицы ===
+        StackPane resultStack = new StackPane(resultTable, loadingGifView);
+        StackPane.setAlignment(loadingGifView, Pos.CENTER);
+        resultStack.setPrefHeight(400);
+
+        // === Основной центральный блок ===
+        centerArea = new VBox(10, queryArea, resultStack);
         centerArea.setPadding(new Insets(10));
 
-        // Логи
+        // --- LOG AREA ---
         logArea = new TextArea();
         logArea.setEditable(false);
         logArea.setPrefHeight(150);
@@ -179,68 +186,8 @@ public class DbClientApp extends Application {
         loadSettings();
     }
 
-    private void enableConnectionDnD() {
-        connectionListView.setCellFactory(lv -> new ListCell<DbConnectionInfo>() {
-            private final HBox container = new HBox();
-            private final Label nameLabel = new Label();
-            private final Circle statusIndicator = new Circle(5);
-
-            {
-                // Настройка элементов
-                statusIndicator.setStroke(Color.TRANSPARENT);
-                statusIndicator.setFill(Color.GRAY); // По умолчанию серый
-                container.getChildren().addAll(nameLabel, statusIndicator);
-                container.setSpacing(5);
-                container.setAlignment(Pos.CENTER_LEFT);
-                setGraphic(container);
-            }
-
-            @Override
-            protected void updateItem(DbConnectionInfo item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    nameLabel.setText(item.getName());
-                    setGraphic(container);
-                }
-            }
-        });
-    }
-
-    private void updateConnectionStatus(DbConnectionInfo connection, boolean isSuccess) {
-        Platform.runLater(() -> {
-            for (int i = 0; i < connectionListView.getItems().size(); i++) {
-                if (connectionListView.getItems().get(i).equals(connection)) {
-                    // Получаем все видимые ячейки
-                    Set<Node> cells = connectionListView.lookupAll(".list-cell");
-                    int cellIndex = 0;
-                    for (Node node : cells) {
-                        if (node instanceof ListCell) {
-                            ListCell<DbConnectionInfo> cell = (ListCell<DbConnectionInfo>) node;
-                            if (cellIndex == i) {
-                                // Нашли нужную ячейку
-                                if (cell.getGraphic() instanceof HBox) {
-                                    HBox container = (HBox) cell.getGraphic();
-                                    if (container.getChildren().size() > 1) {
-                                        Circle indicator = (Circle) container.getChildren().get(1);
-                                        indicator.setFill(isSuccess ? Color.GREEN : Color.RED);
-                                    }
-                                }
-                                break;
-                            }
-                            cellIndex++;
-                        }
-                    }
-                    break;
-                }
-            }
-        });
-    }
 
     private void openSettingsDialog(Window owner) {
-
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(owner);
@@ -271,7 +218,6 @@ public class DbClientApp extends Application {
             preferences.putDouble("fontSize", currentFontSize);
             preferences.put("theme", currentTheme);
 
-            // Применяем настройки ко всем открытым окнам
             applySettings(scene);
             applySettings(dialog.getScene());
 
@@ -282,7 +228,7 @@ public class DbClientApp extends Application {
         vbox.setPadding(new Insets(10));
 
         Scene dialogScene = new Scene(vbox);
-        applySettings(dialogScene); // Применяем текущие настройки к диалогу
+        applySettings(dialogScene);
         dialog.setScene(dialogScene);
         dialog.showAndWait();
     }
@@ -307,10 +253,10 @@ public class DbClientApp extends Application {
     }
 
     private void deleteSelectedConnection() {
-        DbConnectionInfo selected = connectionListView.getSelectionModel().getSelectedItem();
+        DbConnectionInfo selected = connectionSelector.getValue();
         if (selected != null) {
             connections.remove(selected);
-            connectionListView.getItems().remove(selected);
+            connectionSelector.getItems().remove(selected);
             saveConnections();
             log("Удалено подключение: " + selected.getName());
         }
@@ -331,6 +277,7 @@ public class DbClientApp extends Application {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(owner);
         dialog.setTitle("Создать подключение");
+        dialog.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
         TextField nameField = new TextField();
         ComboBox<String> typeField = new ComboBox<>();
@@ -349,7 +296,7 @@ public class DbClientApp extends Application {
                     passwordField.getText()
             );
             connections.add(info);
-            connectionListView.getSelectionModel().getSelectedItem();
+            connectionSelector.getItems().add(info);
             saveConnections();
             dialog.close();
         });
@@ -371,15 +318,11 @@ public class DbClientApp extends Application {
     }
 
     private void connectToDatabase() {
-        DbConnectionInfo selected = connectionListView.getSelectionModel().getSelectedItem();
+        DbConnectionInfo selected = connectionSelector.getValue();
         if (selected == null) {
             log("Подключение не выбрано");
             return;
         }
-
-        // Устанавливаем желтый индикатор (в процессе)
-        updateConnectionStatus(selected, false);
-        ((Circle)((HBox)((ListCell<DbConnectionInfo>)connectionListView.lookup(".list-cell:selected")).getGraphic()).getChildren().get(1)).setFill(Color.YELLOW);
 
         try {
             if (currentConnection != null && !currentConnection.isClosed()) {
@@ -389,45 +332,24 @@ public class DbClientApp extends Application {
                     selected.getUrl(), selected.getUsername(), selected.getPassword()
             );
             log("Подключено к " + selected.getName());
-            updateConnectionStatus(selected, true); // Зеленый при успехе
         } catch (SQLException e) {
             log("Ошибка подключения: " + e.getMessage());
-            updateConnectionStatus(selected, false); // Красный при ошибке
         }
     }
 
     private void testConnection() {
-        DbConnectionInfo selected = connectionListView.getSelectionModel().getSelectedItem();
+        DbConnectionInfo selected = connectionSelector.getValue();
         if (selected == null) {
             log("Подключение не выбрано для тестирования");
             return;
         }
 
-        // Устанавливаем желтый индикатор (в процессе)
-        updateConnectionStatus(selected, false);
-        ((Circle)((HBox)((ListCell<DbConnectionInfo>)connectionListView.lookup(".list-cell:selected")).getGraphic()).getChildren().get(1)).setFill(Color.YELLOW);
-
         try (Connection conn = DriverManager.getConnection(selected.getUrl(), selected.getUsername(), selected.getPassword())) {
             log("Тест подключения успешен к " + selected.getName());
-            updateConnectionStatus(selected, true); // Зеленый при успехе
         } catch (SQLException e) {
             log("Ошибка теста подключения: " + e.getMessage());
-            updateConnectionStatus(selected, false); // Красный при ошибке
         }
     }
-
-    /*private void testConnection() {
-        DbConnectionInfo selected = connectionListView.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            log("Подключение не выбрано для тестирования");
-            return;
-        }
-        try (Connection conn = DriverManager.getConnection(selected.getUrl(), selected.getUsername(), selected.getPassword())) {
-            log("Тест подключения успешен к " + selected.getName());
-        } catch (SQLException e) {
-            log("Ошибка теста подключения: " + e.getMessage());
-        }
-    }*/
 
     private void saveCurrentQuery() {
         if (queryArea.getText() == null || queryArea.getText().isEmpty()) {
@@ -439,6 +361,7 @@ public class DbClientApp extends Application {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.initOwner(scene.getWindow());
         dialog.setTitle("Сохранение запроса");
+        dialog.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
         Label label = new Label("Введите название для запроса:");
         TextField nameField = new TextField();
@@ -470,7 +393,7 @@ public class DbClientApp extends Application {
         }
     }
 
-    private void executeQuery() {
+    private void executeQueryAsync() {
         if (currentConnection == null) {
             log("Нет активного подключения к БД");
             return;
@@ -479,22 +402,169 @@ public class DbClientApp extends Application {
             log("Запрос пустой или не создан");
             return;
         }
-        try (Statement stmt = currentConnection.createStatement()) {
-            boolean result = stmt.execute(queryArea.getText());
-            if (result) {
-                ResultSet rs = stmt.getResultSet();
-                displayResultSet(rs);
-                log("Запрос выполнен успешно (ResultSet)");
-            } else {
-                int updateCount = stmt.getUpdateCount();
-                resultTable.getItems().clear();
-                resultTable.getColumns().clear();
-                log("Запрос выполнен успешно (обновлено строк: " + updateCount + ")");
+
+        String sql = queryArea.getText();
+
+        Task<Void> task = new Task<>() {
+            private List<String> columnNames;
+            private List<List<String>> rows;
+
+            @Override
+            protected Void call() throws Exception {
+                try (Statement stmt = currentConnection.createStatement()) {
+                    boolean result = stmt.execute(sql);
+
+                    if (result) {
+                        try (ResultSet rs = stmt.getResultSet()) {
+                            ResultSetMetaData metaData = rs.getMetaData();
+                            int columnCount = metaData.getColumnCount();
+
+                            columnNames = new ArrayList<>();
+                            for (int i = 1; i <= columnCount; i++) {
+                                columnNames.add(metaData.getColumnName(i));
+                            }
+
+                            rows = new ArrayList<>();
+                            while (rs.next()) {
+                                List<String> row = new ArrayList<>();
+                                for (int i = 1; i <= columnCount; i++) {
+                                    row.add(rs.getString(i));
+                                }
+                                rows.add(row);
+                            }
+                        }
+                    } else {
+                        int updateCount = stmt.getUpdateCount();
+                        Platform.runLater(() -> {
+                            resultTable.getItems().clear();
+                            resultTable.getColumns().clear();
+                            log("Запрос выполнен успешно (обновлено строк: " + updateCount + ")");
+                        });
+                    }
+                }
+                return null;
             }
-        } catch (SQLException e) {
-            log("Ошибка выполнения запроса: " + e.getMessage());
-        }
+
+            @Override
+            protected void succeeded() {
+                if (rows != null && columnNames != null) {
+                    Platform.runLater(() -> {
+                        displayResultSetFromData(columnNames, rows);
+                        loadingGifView.setVisible(false);
+                        loadingGifView.setManaged(false);
+                        resultTable.setVisible(true);
+                        resultTable.setManaged(true);
+                        log("Запрос выполнен успешно (ResultSet)");
+                    });
+                }
+                notifyUser("✅ Запрос выполнен");
+            }
+
+            @Override
+            protected void failed() {
+                Throwable ex = getException();
+                log("Ошибка выполнения запроса: " + (ex != null ? ex.getMessage() : "неизвестная ошибка"));
+                notifyUser("❌ Ошибка выполнения запроса");
+
+                Platform.runLater(() -> {
+                    loadingGifView.setVisible(false);
+                    loadingGifView.setManaged(false);
+                    resultTable.setVisible(true);
+                    resultTable.setManaged(true);
+                });
+            }
+        };
+
+        Platform.runLater(() -> {
+            loadingGifView.setVisible(true);
+            loadingGifView.setManaged(true);
+            resultTable.setVisible(false);
+            resultTable.setManaged(false);
+        });
+
+        new Thread(task).start();
     }
+
+    private void displayResultSetFromData(List<String> columnNames, List<List<String>> data) {
+        resultTable.getItems().clear();
+        resultTable.getColumns().clear();
+
+        // Колонка с номерами строк (нумерация)
+        TableColumn<List<String>, String> indexColumn = new TableColumn<>("#");
+        indexColumn.setCellValueFactory(param -> {
+            int rowIndex = resultTable.getItems().indexOf(param.getValue()) + 1;
+            return new SimpleStringProperty(String.format("%03d", rowIndex));
+        });
+        indexColumn.setPrefWidth(50);
+        indexColumn.setResizable(false);
+        indexColumn.setSortable(false);
+        indexColumn.setStyle("-fx-alignment: CENTER;");
+        resultTable.getColumns().add(indexColumn);
+
+        // Основные колонки с данными
+        for (int i = 0; i < columnNames.size(); i++) {
+            final int colIndex = i;
+            TableColumn<List<String>, String> column = new TableColumn<>(columnNames.get(i));
+            column.setCellValueFactory(cellData -> {
+                List<String> row = cellData.getValue();
+                return new SimpleStringProperty(row.get(colIndex));
+            });
+            column.setPrefWidth(150); // фиксированная ширина колонок
+            column.setResizable(false);
+            column.setStyle("-fx-alignment: CENTER-LEFT;");
+            resultTable.getColumns().add(column);
+        }
+
+        // Устанавливаем фиксированную высоту строк
+        resultTable.setFixedCellSize(30);
+        resultTable.setStyle("-fx-fixed-cell-size: 30px;");
+
+        resultTable.getItems().addAll(data);
+    }
+
+    private void notifyUser(String message) {
+        Platform.runLater(() -> {
+            Stage stage = (Stage) scene.getWindow();
+            if (stage.isIconified()) {
+                stage.setIconified(false);
+                stage.toFront();
+            }
+
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Уведомление");
+            alert.setHeaderText(null);
+            alert.setContentText(message);
+            alert.initOwner(stage);
+
+            DialogPane dialogPane = alert.getDialogPane();
+            dialogPane.setStyle("-fx-font-size: " + currentFontSize + "px;");
+
+            if ("dark".equals(currentTheme)) {
+                dialogPane.setStyle(dialogPane.getStyle() + " -fx-background-color: #2b2b2b;");
+            } else {
+                dialogPane.setStyle(dialogPane.getStyle() + " -fx-background-color: white;");
+            }
+
+            alert.show();
+
+            // ✅ Применить цвет текста и кнопки ПОСЛЕ отображения
+            Platform.runLater(() -> {
+                Node content = dialogPane.lookup(".content.label");
+                Node button = dialogPane.lookupButton(ButtonType.OK);
+
+                if ("dark".equals(currentTheme)) {
+                    if (content != null) content.setStyle("-fx-text-fill: white;");
+                    if (button != null) button.setStyle("-fx-text-fill: white;");
+                } else {
+                    if (content != null) content.setStyle("-fx-text-fill: black;");
+                    if (button != null) button.setStyle("-fx-text-fill: black;");
+                }
+            });
+        });
+    }
+
+
+
 
     private void displayResultSet(ResultSet rs) throws SQLException {
         resultTable.getItems().clear();
@@ -531,14 +601,12 @@ public class DbClientApp extends Application {
             final int colIndex = i;
             TableColumn<List<String>, String> column = new TableColumn<>(metaData.getColumnName(i));
 
-            // Установка значения ячейки
             column.setCellValueFactory(param -> {
                 List<String> row = param.getValue();
                 String value = row.get(colIndex - 1);
                 return new SimpleStringProperty(value != null ? value : "NULL");
             });
 
-            // Фабрика ячеек с переносом текста
             column.setCellFactory(tc -> new TableCell<>() {
                 private Text text;
 
@@ -561,7 +629,6 @@ public class DbClientApp extends Application {
                 }
             });
 
-            // Настройки выравнивания для числовых типов
             String columnType = metaData.getColumnTypeName(i).toLowerCase();
             if (columnType.matches(".*(int|num|dec|float|double).*")) {
                 column.setStyle("-fx-alignment: CENTER-RIGHT;");
@@ -585,36 +652,7 @@ public class DbClientApp extends Application {
         resultTable.setStyle("-fx-fixed-cell-size: 30px;");
     }
 
-    private void autoResizeColumns() {
-        for (TableColumn<List<String>, ?> column : resultTable.getColumns()) {
-            if (column.getText().equals("#")) continue;
-
-            double max = column.getPrefWidth();
-            Font font = Font.font(currentFontSize);
-
-            // Проверяем заголовок
-            Text header = new Text(column.getText());
-            header.setFont(font);
-            max = Math.max(max, header.getLayoutBounds().getWidth() + 30);
-
-            // Проверяем первые 20 строк данных
-            for (int i = 0; i < Math.min(20, resultTable.getItems().size()); i++) {
-                List<String> row = resultTable.getItems().get(i);
-                int colIndex = resultTable.getColumns().indexOf(column) - 1;
-                if (colIndex >= 0 && colIndex < row.size()) {
-                    Text text = new Text(row.get(colIndex));
-                    text.setFont(font);
-                    double width = text.getLayoutBounds().getWidth() + 30;
-                    max = Math.min(Math.max(max, width), 500); // Ограничение максимум 500
-                }
-            }
-
-            column.setPrefWidth(max);
-        }
-    }
-
     private void saveConnections() {
-        // Шифруем пароли перед сохранением
         List<DbConnectionInfo> connectionsToSave = new ArrayList<>();
         for (DbConnectionInfo conn : connections) {
             DbConnectionInfo encryptedConn = new DbConnectionInfo(
@@ -645,7 +683,6 @@ public class DbClientApp extends Application {
     }
 
     private void loadConnections() {
-        // Выносим нужные поля в локальные effectively final переменные
         File fileToLoad = this.connectionsFile;
         ObjectMapper jsonMapper = this.mapper;
 
@@ -665,7 +702,7 @@ public class DbClientApp extends Application {
 
                 Platform.runLater(() -> {
                     this.connections = loadedConnections != null ? loadedConnections : new ArrayList<>();
-                    connectionListView.getItems().setAll(this.connections);
+                    connectionSelector.getItems().setAll(this.connections);
                 });
 
             } catch (IOException e) {
@@ -677,17 +714,11 @@ public class DbClientApp extends Application {
         }).start();
     }
 
-    private void createBackup() throws IOException {
-        Path backupPath = Paths.get("connections_backup_" +
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".json");
-        Files.copy(connectionsFile.toPath(), backupPath);
-    }
-
     private void decryptPasswords(List<DbConnectionInfo> connections) {
         if (connections == null) return;
 
         for (DbConnectionInfo conn : connections) {
-            DbConnectionInfo finalConn = conn; // Создаем effectively final копию
+            DbConnectionInfo finalConn = conn;
             try {
                 if (finalConn.getPassword() != null && finalConn.getPassword().startsWith("ENC:")) {
                     String encrypted = finalConn.getPassword().substring(4);
@@ -719,7 +750,6 @@ public class DbClientApp extends Application {
         }
     }
 
-
     private void log(String message) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String fullMessage = timestamp + " - " + message;
@@ -741,5 +771,3 @@ public class DbClientApp extends Application {
         saveQueries();
     }
 }
-
-
