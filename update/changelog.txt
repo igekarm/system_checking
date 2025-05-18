@@ -1,11 +1,11 @@
 Application version 0.1b
 - The installer has been updated
  - Improved auto-update of the application
-************************************************
+***********************************************
 Версия приложения 0.1b
  - Доработан установщик
  -  Доработано автообновление приложения
-////////////////////////////////////////////////
+///////////////////////////////////////////////
 Application version 0.1a
  - Added support for connecting to databases
  - Implemented SQL query execution and logging
