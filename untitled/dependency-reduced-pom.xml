@@ -25,6 +25,7 @@
             </goals>
             <configuration>
               <transformers>
+                <transformer />
                 <transformer>
                   <mainClass>com.example.dbclient.DbClientApp</mainClass>
                 </transformer>
@@ -52,6 +53,6 @@
   <properties>
     <java.version>17</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <javafx.version>21</javafx.version>
+    <javafx.version>17.0.15</javafx.version>
   </properties>
 </project>

@@ -13,6 +13,10 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
@@ -27,8 +31,11 @@ import javafx.stage.Stage;
 import javafx.stage.Window;
 import com.example.dbclient.SavedQuery;
 import com.example.dbclient.DbConnectionInfo;
+import com.example.dbclient.Updater;
 
 import javafx.scene.image.Image;
+
+import java.awt.*;
 import java.io.File;
 import java.io.File;
 import java.io.FileWriter;
@@ -37,14 +44,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.prefs.Preferences;
+import java.util.stream.Stream;
 
 public class DbClientApp extends Application {
 
@@ -59,46 +70,56 @@ public class DbClientApp extends Application {
     private TextArea logArea;
     private Scene scene;
     private ImageView loadingGifView;
+    private BorderPane root;
+
+    private BorderPane topBar;
+    private Button settingsButton;
 
     private String currentTheme = "light";
     private double currentFontSize = 12;
 
     private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
-    private final File connectionsFile = Paths.get("connections.json").toFile();
-    private final File queriesFile = Paths.get("queries.json").toFile();
+    private static final Path CONFIG_DIR = Paths.get(System.getenv("APPDATA"), "MyApp");
+
+    private final File connectionsFile = getConfigFile("connections.json");
+    private final File queriesFile = getConfigFile("queries.json");
 
     private final Preferences preferences = Preferences.userRoot().node(this.getClass().getName());
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("DB AlertSnap v 0.1a");
+        try {
+            Class.forName("org.postgresql.Driver");
+            Class.forName("oracle.jdbc.OracleDriver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+            log("Не удалось загрузить драйвер: " + e.getMessage());
+        }
+        relocateVersionFilesIfNeeded();
+
+        primaryStage.setTitle("DB AlertSnap");
         primaryStage.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
 
         // --- CONNECTION BLOCK ---
         connectionSelector = new ComboBox<>();
         connectionSelector.setPromptText("Выберите подключение");
         connectionSelector.setOnAction(e -> connectToDatabase());
-        connectionSelector.setPrefWidth(400);  // фиксированная ширина
+        connectionSelector.setPrefWidth(400);
 
         Button addConnectionButton = new Button("Создать подключение");
         addConnectionButton.setOnAction(e -> openAddConnectionDialog(primaryStage));
-        addConnectionButton.setPrefWidth(150);
-        addConnectionButton.setMinWidth(150);
-        addConnectionButton.setMaxWidth(150);
 
         Button testConnectionButton = new Button("Тест подключения");
         testConnectionButton.setOnAction(e -> testConnection());
-        testConnectionButton.setPrefWidth(150);
-        testConnectionButton.setMinWidth(150);
-        testConnectionButton.setMaxWidth(150);
 
         Button deleteConnectionButton = new Button("Удалить подключение");
         deleteConnectionButton.setOnAction(e -> deleteSelectedConnection());
+
+        addConnectionButton.setPrefWidth(150);
+        testConnectionButton.setPrefWidth(150);
         deleteConnectionButton.setPrefWidth(150);
-        deleteConnectionButton.setMinWidth(150);
-        deleteConnectionButton.setMaxWidth(150);
 
         HBox connectionBox = new HBox(10, connectionSelector, addConnectionButton, testConnectionButton, deleteConnectionButton);
         connectionBox.setPadding(new Insets(10));
@@ -107,25 +128,20 @@ public class DbClientApp extends Application {
         querySelector = new ComboBox<>();
         querySelector.setPromptText("Выберите запрос");
         querySelector.setOnAction(e -> loadSelectedQuery());
-        querySelector.setPrefWidth(400);       // другая ширина, если нужно
+        querySelector.setPrefWidth(400);
 
         Button saveQueryButton = new Button("Сохранить запрос");
         saveQueryButton.setOnAction(e -> saveCurrentQuery());
-        saveQueryButton.setPrefWidth(150);
-        saveQueryButton.setMinWidth(150);
-        saveQueryButton.setMaxWidth(150);
 
         Button executeQueryButton = new Button("Выполнить запрос");
         executeQueryButton.setOnAction(e -> executeQueryAsync());
-        executeQueryButton.setPrefWidth(150);
-        executeQueryButton.setMinWidth(150);
-        executeQueryButton.setMaxWidth(150);
 
         Button deleteQueryButton = new Button("Удалить запрос");
         deleteQueryButton.setOnAction(e -> deleteSelectedQuery());
+
+        saveQueryButton.setPrefWidth(150);
+        executeQueryButton.setPrefWidth(150);
         deleteQueryButton.setPrefWidth(150);
-        deleteQueryButton.setMinWidth(150);
-        deleteQueryButton.setMaxWidth(150);
 
         HBox queryBox = new HBox(10, querySelector, saveQueryButton, executeQueryButton, deleteQueryButton);
         queryBox.setPadding(new Insets(10));
@@ -133,13 +149,13 @@ public class DbClientApp extends Application {
         // --- SETTINGS BUTTON ---
         Image settingsIcon = new Image(getClass().getResourceAsStream("/settings_icon.png"));
         ImageView settingsIconView = new ImageView(settingsIcon);
-        Button settingsButton = new Button("", settingsIconView);
+        settingsButton = new Button("", settingsIconView);
         settingsButton.setStyle("-fx-background-color: transparent;");
         settingsButton.setOnAction(e -> openSettingsDialog(primaryStage));
 
-        // --- TOP BAR: vertically stacked connection + query + settings ---
+        // --- TOP BAR ---
         VBox leftTopArea = new VBox(10, connectionBox, queryBox);
-        BorderPane topBar = new BorderPane();
+        topBar = new BorderPane();
         topBar.setLeft(leftTopArea);
         topBar.setRight(settingsButton);
         BorderPane.setMargin(settingsButton, new Insets(10));
@@ -152,23 +168,19 @@ public class DbClientApp extends Application {
         resultTable = new TableView<>();
         resultTable.setPrefHeight(400);
 
-        // === Инициализация loadingGifView ДО использования ===
         loadingGifView = new ImageView(new Image(getClass().getResourceAsStream("/loading.gif")));
         loadingGifView.setPreserveRatio(true);
-        loadingGifView.setFitHeight(64); // или другое подходящее значение
+        loadingGifView.setFitHeight(64);
         loadingGifView.setVisible(false);
         loadingGifView.setManaged(false);
 
-        // === StackPane для наложения анимации поверх таблицы ===
         StackPane resultStack = new StackPane(resultTable, loadingGifView);
         StackPane.setAlignment(loadingGifView, Pos.CENTER);
         resultStack.setPrefHeight(400);
 
-        // === Основной центральный блок ===
         centerArea = new VBox(10, queryArea, resultStack);
         centerArea.setPadding(new Insets(10));
 
-        // --- LOG AREA ---
         logArea = new TextArea();
         logArea.setEditable(false);
         logArea.setPrefHeight(150);
@@ -184,6 +196,71 @@ public class DbClientApp extends Application {
         loadConnections();
         loadQueries();
         loadSettings();
+
+        // === Показываем changelog после обновления, если есть флаг ===
+        Platform.runLater(() -> {
+            if (Files.exists(Paths.get("updated.flag"))) {
+                try {
+                    Files.delete(Paths.get("updated.flag"));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                showChangelogDialog();
+            }
+        });
+
+        // === Проверка обновления ===
+        new Thread(() -> {
+            if (Updater.isUpdateAvailable()) {
+                Platform.runLater(() -> showUpdateButton(primaryStage));
+            }
+        }).start();
+    }
+
+    private File getConfigFile(String filename) {
+        try {
+            Files.createDirectories(CONFIG_DIR);
+        } catch (IOException e) {
+            throw new RuntimeException("Не удалось создать папку конфигурации", e);
+        }
+        return CONFIG_DIR.resolve(filename).toFile();
+    }
+
+    private void relocateVersionFilesIfNeeded() {
+        Path currentDir = Paths.get(System.getProperty("user.dir"));
+        Path appDir = currentDir.resolve("app");
+
+        try {
+            Files.move(appDir.resolve("version.txt"), currentDir.resolve("version.txt"), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {}
+
+        try {
+            Files.move(appDir.resolve("changelog.txt"), currentDir.resolve("changelog.txt"), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {}
+    }
+
+    private void showUpdateButton(Stage primaryStage) {
+        Button updateButton = new Button("Обновить до " + Updater.latestVersion);
+        updateButton.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        updateButton.setOnAction(e -> {
+            log("Обновление до версии " + Updater.latestVersion);
+            Updater.downloadAndUpdate();
+        });
+
+        HBox rightBox = new HBox(10, updateButton, settingsButton);
+        rightBox.setAlignment(Pos.CENTER_RIGHT);
+        rightBox.setPadding(new Insets(10));
+
+        topBar.setRight(rightBox); // ← вот теперь всё правильно
+    }
+
+    private Button createSettingsButton(Stage stage) {
+        Image settingsIcon = new Image(getClass().getResourceAsStream("/settings_icon.png"));
+        ImageView iconView = new ImageView(settingsIcon);
+        Button btn = new Button("", iconView);
+        btn.setStyle("-fx-background-color: transparent;");
+        btn.setOnAction(e -> openSettingsDialog(stage));
+        return btn;
     }
 
 
@@ -194,9 +271,17 @@ public class DbClientApp extends Application {
         dialog.setTitle("Настройки");
         dialog.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
+        // Разрешаем масштабирование и задаем минимальные размеры
+        dialog.setResizable(true);
+        dialog.setMinWidth(400);  // Увеличенная минимальная ширина
+        dialog.setMinHeight(300); // Минимальная высота
+
         Slider fontSizeSlider = new Slider(10, 30, currentFontSize);
         fontSizeSlider.setShowTickLabels(true);
         fontSizeSlider.setShowTickMarks(true);
+        fontSizeSlider.setMajorTickUnit(5);
+        fontSizeSlider.setMinorTickCount(1);
+        fontSizeSlider.setSnapToTicks(true);
 
         ToggleGroup themeGroup = new ToggleGroup();
         RadioButton lightTheme = new RadioButton("Светлая тема");
@@ -224,12 +309,24 @@ public class DbClientApp extends Application {
             dialog.close();
         });
 
-        VBox vbox = new VBox(10, new Label("Размер шрифта:"), fontSizeSlider, lightTheme, darkTheme, applyButton);
-        vbox.setPadding(new Insets(10));
+        // Улучшаем расположение элементов
+        VBox vbox = new VBox(15,
+                new Label("Размер шрифта:"),
+                fontSizeSlider,
+                new Label("Тема:"),
+                lightTheme,
+                darkTheme,
+                applyButton
+        );
+        vbox.setPadding(new Insets(15));
 
-        Scene dialogScene = new Scene(vbox);
+        // Устанавливаем начальный размер сцены (ширина 400, высота 300)
+        Scene dialogScene = new Scene(vbox, 400, 300);
         applySettings(dialogScene);
         dialog.setScene(dialogScene);
+
+        // Центрируем окно
+        dialog.centerOnScreen();
         dialog.showAndWait();
     }
 
@@ -250,6 +347,27 @@ public class DbClientApp extends Application {
                 sceneToStyle.getRoot().setStyle("");
             }
         }
+    }
+
+    public void openChangelogWindow(String changelogContent) {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.setTitle("Список изменений");
+        dialog.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
+
+        TextArea changelogArea = new TextArea(changelogContent);
+        changelogArea.setWrapText(true);
+        changelogArea.setEditable(false);
+
+        VBox root = new VBox(changelogArea);
+        root.setPadding(new Insets(10));
+
+        Scene scene = new Scene(root, 600, 400);
+
+        applySettings(scene); // ✅ применить текущие настройки темы и шрифта
+
+        dialog.setScene(scene);
+        dialog.showAndWait();
     }
 
     private void deleteSelectedConnection() {
@@ -279,19 +397,62 @@ public class DbClientApp extends Application {
         dialog.setTitle("Создать подключение");
         dialog.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
+        // Разрешаем масштабирование окна
+        dialog.setResizable(true);
+
+        // Устанавливаем минимальные размеры, чтобы нельзя было сжать окно слишком сильно
+        dialog.setMinWidth(450);  // Ширина +150px (например, было 300 → стало 450)
+        dialog.setMinHeight(500); // Минимальная высота
+
         TextField nameField = new TextField();
         ComboBox<String> typeField = new ComboBox<>();
         typeField.getItems().addAll("Oracle", "PostgreSQL");
-        TextField urlField = new TextField();
+
+        TextField hostField = new TextField();
+        hostField.setPromptText("hostname или IP");
+        TextField portField = new TextField();
+        portField.setPromptText("порт");
+
+        TextField serviceField = new TextField();
+        serviceField.setPromptText("SID/Service Name (для Oracle)");
+        serviceField.setVisible(false);
+
+        TextField databaseField = new TextField();
+        databaseField.setPromptText("Имя БД (для PostgreSQL)");
+        databaseField.setVisible(false);
+
         TextField usernameField = new TextField();
         PasswordField passwordField = new PasswordField();
 
+        typeField.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if ("Oracle".equals(newVal)) {
+                serviceField.setVisible(true);
+                databaseField.setVisible(false);
+            } else if ("PostgreSQL".equals(newVal)) {
+                serviceField.setVisible(false);
+                databaseField.setVisible(true);
+            }
+        });
+
         Button saveButton = new Button("Сохранить");
         saveButton.setOnAction(e -> {
+            String url = "";
+            String type = typeField.getValue();
+            String host = hostField.getText();
+            String port = portField.getText();
+
+            if ("Oracle".equals(type)) {
+                String service = serviceField.getText();
+                url = String.format("jdbc:oracle:thin:@%s:%s:%s", host, port, service);
+            } else if ("PostgreSQL".equals(type)) {
+                String database = databaseField.getText();
+                url = String.format("jdbc:postgresql://%s:%s/%s", host, port, database);
+            }
+
             DbConnectionInfo info = new DbConnectionInfo(
                     nameField.getText(),
-                    typeField.getValue(),
-                    urlField.getText(),
+                    type,
+                    url,
                     usernameField.getText(),
                     passwordField.getText()
             );
@@ -304,14 +465,17 @@ public class DbClientApp extends Application {
         VBox vbox = new VBox(10,
                 new Label("Название:"), nameField,
                 new Label("Тип подключения:"), typeField,
-                new Label("JDBC URL:"), urlField,
+                new Label("Хост:"), hostField,
+                new Label("Порт:"), portField,
+                serviceField,
+                databaseField,
                 new Label("Логин:"), usernameField,
                 new Label("Пароль:"), passwordField,
                 saveButton
         );
         vbox.setPadding(new Insets(10));
 
-        Scene dialogScene = new Scene(vbox);
+        Scene dialogScene = new Scene(vbox, 450, 500); // Увеличиваем ширину сцены (например, 450 вместо 300)
         applySettings(dialogScene);
         dialog.setScene(dialogScene);
         dialog.showAndWait();
@@ -363,9 +527,17 @@ public class DbClientApp extends Application {
         dialog.setTitle("Сохранение запроса");
         dialog.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
 
+        // Настройки размера и масштабирования
+        dialog.setResizable(true);
+        dialog.setMinWidth(400);
+        dialog.setMinHeight(150);
+
         Label label = new Label("Введите название для запроса:");
         TextField nameField = new TextField();
+        nameField.setPrefWidth(350);
+
         Button okButton = new Button("OK");
+        okButton.setPrefWidth(100);
 
         okButton.setOnAction(e -> {
             if (!nameField.getText().isEmpty()) {
@@ -374,15 +546,30 @@ public class DbClientApp extends Application {
                 querySelector.getItems().add(newQuery);
                 saveQueries();
                 dialog.close();
+            } else {
+                // Создаём кастомный Alert с применением текущих настроек
+                Alert alert = new Alert(Alert.AlertType.WARNING);
+                alert.setTitle("Ошибка");
+                alert.setHeaderText("Не указано название запроса");
+                alert.setContentText("Пожалуйста, введите название для сохранения запроса.");
+
+                // Применяем текущие настройки темы к Alert
+                Stage alertStage = (Stage) alert.getDialogPane().getScene().getWindow();
+                alertStage.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
+                applySettings(alert.getDialogPane().getScene()); // Применяем настройки темы
+
+                alert.showAndWait();
             }
         });
 
-        VBox vbox = new VBox(10, label, nameField, okButton);
-        vbox.setPadding(new Insets(10));
+        VBox vbox = new VBox(15, label, nameField, okButton);
+        vbox.setPadding(new Insets(15));
+        vbox.setAlignment(Pos.CENTER);
 
-        Scene dialogScene = new Scene(vbox);
-        applySettings(dialogScene);
+        Scene dialogScene = new Scene(vbox, 400, 150);
+        applySettings(dialogScene); // Применяем настройки к основному диалогу
         dialog.setScene(dialogScene);
+        dialog.centerOnScreen();
         dialog.showAndWait();
     }
 
@@ -493,7 +680,7 @@ public class DbClientApp extends Application {
         TableColumn<List<String>, String> indexColumn = new TableColumn<>("#");
         indexColumn.setCellValueFactory(param -> {
             int rowIndex = resultTable.getItems().indexOf(param.getValue()) + 1;
-            return new SimpleStringProperty(String.format("%03d", rowIndex));
+            return new SimpleStringProperty(String.valueOf(rowIndex));
         });
         indexColumn.setPrefWidth(50);
         indexColumn.setResizable(false);
@@ -523,6 +710,7 @@ public class DbClientApp extends Application {
     }
 
     private void notifyUser(String message) {
+        Toolkit.getDefaultToolkit().beep();
         Platform.runLater(() -> {
             Stage stage = (Stage) scene.getWindow();
             if (stage.isIconified()) {
@@ -561,95 +749,6 @@ public class DbClientApp extends Application {
                 }
             });
         });
-    }
-
-
-
-
-    private void displayResultSet(ResultSet rs) throws SQLException {
-        resultTable.getItems().clear();
-        resultTable.getColumns().clear();
-
-        // 1. Колонка с номерами строк
-        TableColumn<List<String>, String> indexColumn = new TableColumn<>("#");
-        indexColumn.setCellValueFactory(param -> {
-            int rowIndex = resultTable.getItems().indexOf(param.getValue()) + 1;
-            return new SimpleStringProperty(String.valueOf(rowIndex));
-        });
-        indexColumn.setCellFactory(col -> new TableCell<>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item);
-                    setStyle("-fx-alignment: CENTER; -fx-font-weight: bold;");
-                }
-            }
-        });
-        indexColumn.setPrefWidth(50);
-        indexColumn.setResizable(false);
-        indexColumn.setSortable(false);
-        resultTable.getColumns().add(indexColumn);
-
-        // 2. Основные колонки с данными
-        ResultSetMetaData metaData = rs.getMetaData();
-        int columnCount = metaData.getColumnCount();
-
-        for (int i = 1; i <= columnCount; i++) {
-            final int colIndex = i;
-            TableColumn<List<String>, String> column = new TableColumn<>(metaData.getColumnName(i));
-
-            column.setCellValueFactory(param -> {
-                List<String> row = param.getValue();
-                String value = row.get(colIndex - 1);
-                return new SimpleStringProperty(value != null ? value : "NULL");
-            });
-
-            column.setCellFactory(tc -> new TableCell<>() {
-                private Text text;
-
-                @Override
-                protected void updateItem(String item, boolean empty) {
-                    super.updateItem(item, empty);
-                    if (empty || item == null) {
-                        setGraphic(null);
-                        setText(null);
-                    } else {
-                        if (text == null) {
-                            text = new Text(item);
-                            text.wrappingWidthProperty().bind(column.widthProperty().subtract(10));
-                            text.setStyle("-fx-font-size: " + currentFontSize + "px;");
-                        } else {
-                            text.setText(item);
-                        }
-                        setGraphic(text);
-                    }
-                }
-            });
-
-            String columnType = metaData.getColumnTypeName(i).toLowerCase();
-            if (columnType.matches(".*(int|num|dec|float|double).*")) {
-                column.setStyle("-fx-alignment: CENTER-RIGHT;");
-            }
-
-            column.setPrefWidth(150);
-            resultTable.getColumns().add(column);
-        }
-
-        // 3. Заполнение данными
-        while (rs.next()) {
-            List<String> row = new ArrayList<>();
-            for (int i = 1; i <= columnCount; i++) {
-                row.add(rs.getString(i));
-            }
-            resultTable.getItems().add(row);
-        }
-
-        // 4. Настройка фиксированной высоты строк
-        resultTable.setFixedCellSize(30);
-        resultTable.setStyle("-fx-fixed-cell-size: 30px;");
     }
 
     private void saveConnections() {
@@ -754,11 +853,81 @@ public class DbClientApp extends Application {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String fullMessage = timestamp + " - " + message;
         logArea.appendText(fullMessage + "\n");
-        try (FileWriter fw = new FileWriter("dbclient.log", true)) {
-            fw.write(fullMessage + "\n");
+
+        try {
+            Files.createDirectories(CONFIG_DIR);
+
+            String lower = message.toLowerCase();
+            String logType = (lower.contains("ошибка") || lower.contains("[error]") || lower.contains("(error)"))
+                    ? "error"
+                    : "debug";
+
+            String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            File logFile = CONFIG_DIR.resolve(logType + "-" + date + ".log").toFile();
+
+            try (FileWriter fw = new FileWriter(logFile, true)) {
+                fw.write(fullMessage + "\n");
+            }
+
+            cleanupOldLogs();
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private void cleanupOldLogs() throws IOException {
+        LocalDate twoDaysAgo = LocalDate.now().minusDays(2);
+
+        try (Stream<Path> files = Files.list(CONFIG_DIR)) {
+            files.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().matches("(debug|error)-\\d{4}-\\d{2}-\\d{2}\\.log"))
+                    .filter(path -> {
+                        String name = path.getFileName().toString();
+                        String datePart = name.substring(name.indexOf('-') + 1, name.lastIndexOf('.'));
+                        try {
+                            LocalDate fileDate = LocalDate.parse(datePart, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                            return fileDate.isBefore(twoDaysAgo);
+                        } catch (DateTimeParseException e) {
+                            return false;
+                        }
+                    })
+                    .forEach(path -> {
+                        try {
+                            Files.delete(path);
+                        } catch (IOException e) {
+                            System.err.println("Не удалось удалить старый лог: " + path);
+                        }
+                    });
+        }
+    }
+
+    private void showChangelogDialog() {
+        String changelog = Updater.downloadChangelog();
+
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Что нового");
+        alert.setHeaderText("Приложение обновлено до версии " + Updater.latestVersion);
+
+        // Настройка TextArea
+        TextArea area = new TextArea(changelog);
+        area.setWrapText(true);
+        area.setEditable(false);
+        area.setPrefWidth(600);
+        area.setPrefHeight(300);
+
+        alert.getDialogPane().setContent(area);
+
+        // Применяем текущие настройки темы
+        Stage alertStage = (Stage) alert.getDialogPane().getScene().getWindow();
+        alertStage.getIcons().add(new Image(getClass().getResourceAsStream("/icon.png")));
+        applySettings(alert.getDialogPane().getScene());
+
+        // Опционально: делаем окно масштабируемым
+        alertStage.setResizable(true);
+        alertStage.setMinWidth(650);
+        alertStage.setMinHeight(400);
+
+        alert.showAndWait();
     }
 
     public static void main(String[] args) {
