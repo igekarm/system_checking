@@ -1,16 +1,16 @@
-﻿Application version 0.5
+﻿Application version 0.6
  - The installer has been updated
  - Improved auto-update of the application
 ***********************************************
-Версия приложения 0.5
+Версия приложения 0.6
  - Доработан установщик
  - Доработано окно создания подключения, вместо JDBC URL
  - Доработано автообновление приложения
 ///////////////////////////////////////////////
-Application version 0.4
+Application version 0.5
  - Added support for connecting to databases
  - Implemented SQL query execution and logging
 ************************************************
-Версия приложения 0.4
+Версия приложения 0.5
  - Добавлена поддержка подключения к базам данных
  - Реализовано выполнение SQL-запросов и ведение журнала
