@@ -1,8 +1,8 @@
-﻿Application version 0.1
+﻿Application version 0.2
  - The installer has been updated
  - Improved auto-update of the application
 ***********************************************
-Версия приложения 0.1
+Версия приложения 0.2
  - Доработан установщик
  - Доработано окно создания подключения, вместо JDBC URL
  - Доработано автообновление приложения
