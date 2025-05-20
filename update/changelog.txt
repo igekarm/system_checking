@@ -1,4 +1,24 @@
-﻿Application version 0.6
+﻿Application version 1.0  
+ - Added connection edit button  
+ - Redesigned database connection process:  
+    - Eliminated manual JDBC URL input  
+    - Implemented step-by-step connection setup:  
+       - Database server IP  
+       - Connection port  
+       - SID (Oracle) or DB name (PostgreSQL)  
+ - Improved font settings 
+***********************************************
+Версия приложения 1.0  
+ - Добавлена кнопка редактирования подключения  
+ - Переработан процесс создания подключения к БД:  
+    - Устранён ручной ввод JDBC URL  
+    - Добавлен пошаговый ввод параметров:  
+       - IP-адрес сервера БД  
+       - Порт подключения  
+       - SID (Oracle) или имя БД (PostgreSQL)  
+ - Доработаны настройки шрифтов 
+///////////////////////////////////////////////
+Application version 0.6
  - The installer has been updated
  - Improved auto-update of the application
 ***********************************************
