@@ -23,3 +23,12 @@ test("downloads manifest through its public browser URL",async()=>{
   assert.equal(value.manifest.version,"0.1.6");
   assert.equal(urls[1],"https://github.com/public-manifest");
 });
+
+test("selects the highest semantic version regardless of GitHub order",async()=>{
+  const release=(version)=>({draft:false,prerelease:false,tag_name:`app-v${version}`,assets:[{name:"latest-win-x64-stable.json",browser_download_url:`https://github.com/manifest-${version}`}]});
+  const releases=[release("0.1.9"),release("0.1.8"),release("0.1.10")];
+  const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async(url)=>url.includes("releases?per_page")?new Response(JSON.stringify(releases),{status:200}):new Response(JSON.stringify({version:"0.1.10"}),{status:200})});
+  const value=await client.latestRelease();
+  assert.equal(value.release.tag_name,"app-v0.1.10");
+  assert.equal(value.manifest.version,"0.1.10");
+});

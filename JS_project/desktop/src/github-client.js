@@ -1,4 +1,7 @@
+import { compareVersions } from "@db-tools/update-core";
+
 const API = "https://api.github.com";
+function releaseVersion(release){const match=/^app-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(String(release.tag_name??""));return match?.[1]??null;}
 export class GitHubReleaseClient {
   constructor({ owner, repo, fetchImpl=fetch, logger=null }) { this.owner=owner; this.repo=repo; this.fetch=fetchImpl; this.logger=logger; }
   headers(accept="application/vnd.github+json") { return { Accept:accept, "X-GitHub-Api-Version":"2026-03-10", "User-Agent":"DB-Tools-Updater" }; }
@@ -18,7 +21,8 @@ export class GitHubReleaseClient {
   }
   async latestRelease(channel="stable") {
     const response=await this.request(`${API}/repos/${this.owner}/${this.repo}/releases?per_page=20`); const releases=await response.json();
-    const release=releases.find((item)=>!item.draft && item.tag_name?.startsWith("app-v") && (channel==="beta" ? item.prerelease : !item.prerelease));
+    const candidates=releases.filter((item)=>!item.draft && releaseVersion(item) && (channel==="beta" ? item.prerelease : !item.prerelease)).sort((left,right)=>compareVersions(releaseVersion(right),releaseVersion(left)));
+    const release=candidates[0];
     if (!release) return null; const manifestAsset=release.assets.find((asset)=>asset.name===`latest-win-x64-${channel}.json`);
     if (!manifestAsset) throw new Error("Release does not contain a signed update manifest");
     const manifestResponse=await this.request(manifestAsset.browser_download_url,{accept:"application/octet-stream"});
