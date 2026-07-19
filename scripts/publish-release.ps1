@@ -33,6 +33,13 @@ if ($LASTEXITCODE -ne 0 -or $branch -ne 'master') {
   throw "Release must be created from the master branch. Current branch: $branch"
 }
 
+Write-Host "Checking release version $Version..." -ForegroundColor Cyan
+Invoke-Checked git fetch origin --tags
+$existingTag = [string](& git tag --list $releaseTag)
+if (-not [string]::IsNullOrWhiteSpace($existingTag)) {
+  throw "Tag $releaseTag already exists. Choose the next semantic version."
+}
+
 Write-Host "[1/7] Updating master..." -ForegroundColor Cyan
 Invoke-Checked git pull --ff-only origin master
 
@@ -72,19 +79,6 @@ else {
 Write-Host "[6/7] Publishing master..." -ForegroundColor Cyan
 Invoke-Checked git pull --rebase origin master
 Invoke-Checked git push origin master
-Invoke-Checked git fetch origin --tags
-
-if ((& git tag --list $releaseTag).Trim()) {
-  throw "Tag $releaseTag already exists. Choose the next semantic version."
-}
-
-& git ls-remote --exit-code --tags origin "refs/tags/$releaseTag" *> $null
-if ($LASTEXITCODE -eq 0) {
-  throw "Tag $releaseTag already exists on GitHub. Choose the next semantic version."
-}
-if ($LASTEXITCODE -ne 2) {
-  throw "Unable to check release tag on GitHub."
-}
 
 $localHead = (& git rev-parse HEAD).Trim()
 $remoteHead = (& git rev-parse origin/master).Trim()

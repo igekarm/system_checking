@@ -7,7 +7,7 @@ cd D:\system_checking_public
 .\release.cmd 0.1.8 "Add Oracle Database provider"
 ```
 
-Сценарий автоматически:
+Сценарий сначала обновляет список тегов и немедленно останавливается, если указанная версия уже выпущена. После этого он автоматически:
 
 1. проверяет ветку `master` и получает изменения через fast-forward;
 2. запускает `npm.cmd ci` — это не зависит от PowerShell Execution Policy;
