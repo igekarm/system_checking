@@ -27,15 +27,19 @@ export class AppService {
     const requestedMode=input.sslMode??(input.ssl?"prefer":"disable");
     const value={id:input.id||randomUUID(),name:clean(input.name),providerId,host:clean(input.host),port:Number(input.port||(providerId==="oracle"?1521:5432)),user:clean(input.user),updatedAt:new Date().toISOString()};
     if(providerId==="oracle"){
+      value.oracleConnectionType=["serviceName","sid","connectString"].includes(input.oracleConnectionType)?input.oracleConnectionType:(clean(input.connectString)?"connectString":"serviceName");
       value.serviceName=clean(input.serviceName);
+      value.sid=clean(input.sid);
       value.connectString=clean(input.connectString);
-      if(!value.name||!value.user||(!value.connectString&&(!value.host||!value.serviceName)))throw new Error("Заполните название, пользователя и строку подключения либо сервер и имя сервиса Oracle");
+      const targetValid=value.oracleConnectionType==="connectString"?Boolean(value.connectString):value.oracleConnectionType==="sid"?Boolean(value.host&&value.sid):Boolean(value.host&&value.serviceName);
+      if(!value.name||!value.user||!targetValid)throw new Error("Заполните название, пользователя и параметры выбранного режима подключения Oracle");
+      if(value.oracleConnectionType!=="connectString"&&/[()]/.test(`${value.host}${value.serviceName}${value.sid}`))throw new Error("Параметры Oracle содержат недопустимые скобки; используйте режим полного connect descriptor");
     }else{
       value.database=clean(input.database);
       value.sslMode=["disable","prefer","require","verify-full"].includes(requestedMode)?requestedMode:"prefer";
       if(!value.name||!value.host||!value.database||!value.user)throw new Error("Заполните название, сервер, базу данных и пользователя");
     }
-    if(!value.connectString&&(!Number.isInteger(value.port)||value.port<1||value.port>65535))throw new Error("Некорректный порт");
+    if((providerId!=="oracle"||value.oracleConnectionType!=="connectString")&&(!Number.isInteger(value.port)||value.port<1||value.port>65535))throw new Error("Некорректный порт");
     return value;
   }
   async ensureProviderEnabled(providerId){const settings=await this.getSettings();if(!settings.enabledProviders.includes(providerId))throw new Error(`${providerId==="oracle"?"Oracle":"PostgreSQL"} отключён в настройках`);if(providerId==="oracle"&&!await this.providerInstaller.isOracleInstalled())throw new Error("Oracle provider не установлен. Включите Oracle в настройках приложения");}

@@ -458,6 +458,12 @@ aside {
   color: var(--muted);
   margin-top: 2px;
 }
+.oracle-connect-string {
+  min-height: 92px;
+  resize: vertical;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
 .provider-settings {
   margin-top: 16px;
   padding: 14px;

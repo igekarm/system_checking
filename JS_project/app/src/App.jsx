@@ -10,6 +10,8 @@ const emptyConnection = {
   port: 5432,
   database: "postgres",
   serviceName: "FREEPDB1",
+  sid: "ORCL",
+  oracleConnectionType: "serviceName",
   connectString: "",
   user: "",
   password: "",
@@ -62,6 +64,9 @@ function ConnectionModal({ initial, enabledProviders, onSaved, onClose }) {
   const [busy, setBusy] = useState(false);
   const set = (key, value) => setForm((old) => ({ ...old, [key]: value }));
   const oracle = form.providerId === "oracle";
+  const oracleType =
+    form.oracleConnectionType ??
+    (form.connectString ? "connectString" : "serviceName");
   function changeProvider(providerId) {
     setForm((old) => ({
       ...old,
@@ -76,7 +81,7 @@ function ConnectionModal({ initial, enabledProviders, onSaved, onClose }) {
     try {
       const value = await desktop.connections.test(form);
       setMessage(
-        `Подключено за ${value.durationMs} мс · ${value.database ?? form.serviceName} · ${value.user}${value.mode ? ` · ${value.mode}` : ` · ${value.sslUsed ? "SSL" : "без SSL"}`}`,
+        `Подключено за ${value.durationMs} мс · ${value.database ?? form.serviceName ?? form.sid ?? "Oracle"} · ${value.user}${value.mode ? ` · ${value.mode}` : ` · ${value.sslUsed ? "SSL" : "без SSL"}`}`,
       );
     } catch (error) {
       setMessage(cleanError(error));
@@ -115,43 +120,84 @@ function ConnectionModal({ initial, enabledProviders, onSaved, onClose }) {
             disabled={Boolean(form.id)}
           >
             <option value="postgresql">PostgreSQL</option>
-              {(enabledProviders ?? ["postgresql"]).includes("oracle") && (
+            {(enabledProviders ?? ["postgresql"]).includes("oracle") && (
               <option value="oracle">Oracle Database</option>
             )}
           </select>
         </Field>
-        <Field label="Сервер">
-          <input
-            value={form.host}
-            onChange={(e) => set("host", e.target.value)}
-          />
-        </Field>
-        <Field label="Порт">
-          <input
-            type="number"
-            value={form.port}
-            onChange={(e) => set("port", e.target.value)}
-          />
-        </Field>
         {oracle ? (
           <>
-            <Field label="Имя сервиса">
-              <input
-                value={form.serviceName ?? ""}
-                placeholder="FREEPDB1"
-                onChange={(e) => set("serviceName", e.target.value)}
-              />
+            <Field label="Подключаться по">
+              <select
+                value={oracleType}
+                onChange={(e) => set("oracleConnectionType", e.target.value)}
+              >
+                <option value="serviceName">Service name</option>
+                <option value="sid">SID</option>
+                <option value="connectString">
+                  Connect descriptor / JDBC URL
+                </option>
+              </select>
             </Field>
-            <Field label="Строка подключения (необязательно)">
-              <input
-                value={form.connectString ?? ""}
-                placeholder="host:1521/service"
-                onChange={(e) => set("connectString", e.target.value)}
-              />
-            </Field>
+            {oracleType === "connectString" ? (
+              <Field label="Connect descriptor, Easy Connect или JDBC URL">
+                <textarea
+                  className="oracle-connect-string"
+                  value={form.connectString ?? ""}
+                  placeholder="host:1521/service, jdbc:oracle:thin:@... или (DESCRIPTION=...)"
+                  onChange={(e) => set("connectString", e.target.value)}
+                />
+              </Field>
+            ) : (
+              <>
+                <Field label="Сервер">
+                  <input
+                    value={form.host}
+                    onChange={(e) => set("host", e.target.value)}
+                  />
+                </Field>
+                <Field label="Порт">
+                  <input
+                    type="number"
+                    value={form.port}
+                    onChange={(e) => set("port", e.target.value)}
+                  />
+                </Field>
+                {oracleType === "sid" ? (
+                  <Field label="SID">
+                    <input
+                      value={form.sid ?? ""}
+                      placeholder="ORCL"
+                      onChange={(e) => set("sid", e.target.value)}
+                    />
+                  </Field>
+                ) : (
+                  <Field label="Service name">
+                    <input
+                      value={form.serviceName ?? ""}
+                      placeholder="FREEPDB1 или service.domain"
+                      onChange={(e) => set("serviceName", e.target.value)}
+                    />
+                  </Field>
+                )}
+              </>
+            )}
           </>
         ) : (
           <>
+            <Field label="Сервер">
+              <input
+                value={form.host}
+                onChange={(e) => set("host", e.target.value)}
+              />
+            </Field>
+            <Field label="Порт">
+              <input
+                type="number"
+                value={form.port}
+                onChange={(e) => set("port", e.target.value)}
+              />
+            </Field>
             <Field label="База данных">
               <input
                 value={form.database ?? ""}
