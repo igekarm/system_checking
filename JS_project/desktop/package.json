@@ -1,7 +1,7 @@
 {
   "name":"@db-tools/desktop","version":"0.1.5","private":true,"description":"Secure desktop database tools","author":"igekarm","type":"module","main":"src/main.js",
-  "scripts":{"dev":"electron .","build":"node --check src/main.js && node --check src/application-logger.js && node --check src/app-service.js && node --check src/postgresql-provider.js && node --check src/github-client.js && node --check src/update-coordinator.js","package:win":"electron-builder --win nsis --publish never","test":"node --test"},
-  "dependencies":{"@db-tools/app-server":"*","@db-tools/sql-core":"*","@db-tools/update-contracts":"*","@db-tools/update-core":"*","pg":"8.16.3","pg-cursor":"2.21.0"},
+  "scripts":{"dev":"electron .","build":"node --check src/main.js && node --check src/application-logger.js && node --check src/authenticode-verifier.js && node --check src/app-service.js && node --check src/provider-installer.js && node --check src/oracle-provider.js && node --check src/postgresql-provider.js && node --check src/github-client.js && node --check src/update-coordinator.js","package:win":"electron-builder --win nsis --publish never","test":"node --test"},
+  "dependencies":{"@db-tools/app-server":"*","@db-tools/sql-core":"*","@db-tools/update-contracts":"*","@db-tools/update-core":"*","pg":"8.16.3","pg-cursor":"2.21.0","tar":"7.5.20"},
   "devDependencies":{"electron":"43.1.1","electron-builder":"26.15.3"},
   "build":{"appId":"com.igekarm.dbtools","productName":"DB Tools","artifactName":"DB-Tools-${version}-win-${arch}.${ext}","directories":{"output":"../release"},"files":["src/**/*","package.json"],"extraResources":[{"from":"../app/dist","to":"app-ui"},{"from":"../CHANGELOG.md","to":"CHANGELOG.md"}],"win":{"target":["nsis"]},"nsis":{"oneClick":false,"allowToChangeInstallationDirectory":true,"createDesktopShortcut":true}}
 }

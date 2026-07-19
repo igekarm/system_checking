@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("dbToolsDesktop", Object.freeze({
   app: Object.freeze({info:()=>ipcRenderer.invoke("app:info"),acknowledgeVersion:()=>ipcRenderer.invoke("app:acknowledge-version"),openLogFolder:()=>ipcRenderer.invoke("app:open-log-folder"),reportError:(value)=>ipcRenderer.invoke("logs:renderer-error",value)}),
+  providers: Object.freeze({list:()=>ipcRenderer.invoke("providers:list"),install:(id)=>ipcRenderer.invoke("providers:install",id)}),
   connections: Object.freeze({list:()=>ipcRenderer.invoke("connections:list"),save:(value)=>ipcRenderer.invoke("connections:save",value),delete:(id)=>ipcRenderer.invoke("connections:delete",id),test:(value)=>ipcRenderer.invoke("connections:test",value)}),
   queries: Object.freeze({list:()=>ipcRenderer.invoke("queries:list"),save:(value)=>ipcRenderer.invoke("queries:save",value),delete:(id)=>ipcRenderer.invoke("queries:delete",id)}),
   sql: Object.freeze({execute:(value)=>ipcRenderer.invoke("sql:execute",value),cancel:(value)=>ipcRenderer.invoke("sql:cancel",value)}),

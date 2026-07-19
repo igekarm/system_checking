@@ -1,8 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { GitHubReleaseClient } from "./github-client.js";
 import { UpdateCoordinator } from "./update-coordinator.js";
@@ -11,13 +10,13 @@ import { AppService } from "./app-service.js";
 import { updateConfig } from "./update-config.js";
 import { ApplicationLogger } from "./application-logger.js";
 import { JsonStore } from "./json-store.js";
+import { readAuthenticodeSignature } from "./authenticode-verifier.js";
 
 app.setName("DB Tools");
 const directory=path.dirname(fileURLToPath(import.meta.url)); let window; let logger;
-const execFileAsync=promisify(execFile);
-async function verifyAndInstall(coordinator){const file=coordinator.snapshot.installerPath;if(coordinator.snapshot.state!=="ready"||!file)throw new Error("Проверенное обновление не готово");const script='param([string]$p); $s=Get-AuthenticodeSignature -LiteralPath $p; [pscustomobject]@{Status=$s.Status.ToString();Subject=$s.SignerCertificate.Subject}|ConvertTo-Json -Compress';const {stdout}=await execFileAsync("powershell.exe",["-NoProfile","-NonInteractive","-Command",script,file],{windowsHide:true});const signature=JSON.parse(stdout.trim());if(signature.Status!=="Valid")throw new Error(`Authenticode signature is not valid (${signature.Status})`);if(updateConfig.windowsPublisherSubject&&!signature.Subject.includes(updateConfig.windowsPublisherSubject))throw new Error("Installer publisher does not match update policy");spawn(file,["/S"],{detached:true,stdio:"ignore",windowsHide:true}).unref();setTimeout(()=>app.quit(),250);return true;}
+async function verifyAndInstall(coordinator){const file=coordinator.snapshot.installerPath;if(coordinator.snapshot.state!=="ready"||!file)throw new Error("Проверенное обновление не готово");const signature=await readAuthenticodeSignature(file);if(signature.Status!=="Valid")throw new Error(`Цифровая подпись установщика недействительна (${signature.Status})`);if(updateConfig.windowsPublisherSubject&&!signature.Subject.includes(updateConfig.windowsPublisherSubject))throw new Error("Издатель установщика не соответствует политике обновлений");spawn(file,["/S"],{detached:true,stdio:"ignore",windowsHide:true}).unref();setTimeout(()=>app.quit(),250);return true;}
 function registerAppHandlers(service){
-  const handlers={"connections:list":()=>service.listConnections(),"connections:save":(_event,value)=>service.saveConnection(value),"connections:delete":(_event,id)=>service.deleteConnection(id),"connections:test":(_event,value)=>service.testConnection(value),"queries:list":()=>service.listQueries(),"queries:save":(_event,value)=>service.saveQuery(value),"queries:delete":(_event,id)=>service.deleteQuery(id),"sql:execute":(_event,value)=>service.execute(value),"sql:cancel":(_event,value)=>service.cancel(value),"settings:get":()=>service.getSettings(),"settings:save":(_event,value)=>service.saveSettings(value),"history:list":()=>service.listHistory()};
+  const handlers={"providers:list":()=>service.listProviders(),"providers:install":(_event,id)=>service.installProvider(id),"connections:list":()=>service.listConnections(),"connections:save":(_event,value)=>service.saveConnection(value),"connections:delete":(_event,id)=>service.deleteConnection(id),"connections:test":(_event,value)=>service.testConnection(value),"queries:list":()=>service.listQueries(),"queries:save":(_event,value)=>service.saveQuery(value),"queries:delete":(_event,id)=>service.deleteQuery(id),"sql:execute":(_event,value)=>service.execute(value),"sql:cancel":(_event,value)=>service.cancel(value),"settings:get":()=>service.getSettings(),"settings:save":(_event,value)=>service.saveSettings(value),"history:list":()=>service.listHistory()};
   for(const [channel,handler] of Object.entries(handlers))ipcMain.handle(channel,handler);
 }
 app.whenReady().then(async()=>{
@@ -26,7 +25,7 @@ app.whenReady().then(async()=>{
   await logger.info("application.started",{version:app.getVersion(),packaged:app.isPackaged,platform:process.platform});
   process.on("uncaughtException",(error)=>logger.error("application.uncaught-exception",error));
   process.on("unhandledRejection",(error)=>logger.error("application.unhandled-rejection",error instanceof Error?error:new Error(String(error))));
-  registerAppHandlers(new AppService(userDataPath));
+  registerAppHandlers(new AppService(userDataPath,{logger}));
   const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",logger});
   const publicKeyPem=process.env.DB_TOOLS_UPDATE_PUBLIC_KEY?.replace(/\\n/g,"\n")||updateConfig.publicKeyPem;
   const coordinator=new UpdateCoordinator({client,currentVersion:app.getVersion(),channel:"stable",publicKeyPem,downloadDirectory:path.join(userDataPath,"updates"),logger});
