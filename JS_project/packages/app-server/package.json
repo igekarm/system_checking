@@ -1,0 +1,1 @@
+{"name":"@db-tools/app-server","version":"0.1.0","type":"module","exports":"./src/index.js","dependencies":{"@db-tools/contracts":"*","@db-tools/sql-core":"*","@db-tools/provider-postgresql":"*","express":"^5.1.0"}}

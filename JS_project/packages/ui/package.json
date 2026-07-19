@@ -1,0 +1,1 @@
+{"name":"@db-tools/ui","version":"0.1.0","type":"module","exports":"./src/index.jsx","peerDependencies":{"@ag-grid-community/react":"^32.3.9","@ag-grid-community/core":"^32.3.9","@ag-grid-community/client-side-row-model":"^32.3.9","@ag-grid-community/styles":"^32.3.9","react":"^19.1.1","react-dom":"^19.1.1"}}

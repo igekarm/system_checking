@@ -1,0 +1,6 @@
+{
+  "name":"@db-tools/app","version":"0.1.0","private":true,"type":"module",
+  "scripts":{"dev":"vite","dev:api":"node server/index.js","build":"vite build","test":"node --test"},
+  "dependencies":{"@db-tools/app-server":"*","@db-tools/contracts":"*","@db-tools/sql-core":"*","@db-tools/ui":"*","@db-tools/provider-postgresql":"*","@ag-grid-community/core":"^32.3.9","@ag-grid-community/client-side-row-model":"^32.3.9","@ag-grid-community/react":"^32.3.9","@ag-grid-community/styles":"^32.3.9","express":"^5.1.0","react":"^19.1.1","react-dom":"^19.1.1"},
+  "devDependencies":{"@vitejs/plugin-react":"^4.7.0","vite":"^7.1.7"}
+}

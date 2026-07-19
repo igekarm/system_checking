@@ -1,0 +1,5 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { connectPostgreSqlClient } from "./postgresql-provider.js";
+test("prefer SSL falls back only when server explicitly rejects SSL",async()=>{const attempts=[];class FakeClient{constructor(config){this.config=config;attempts.push(config)}async connect(){if(this.config.ssl)throw new Error("The server does not support SSL connections")}async end(){}}const client=await connectPostgreSqlClient({host:"db",port:5432,database:"x",user:"u",sslMode:"prefer"},"p",1000,FakeClient);assert.equal(client.config.ssl,false);assert.equal(attempts.length,2);assert.equal(client.config.statement_timeout,1000);assert.equal("query_timeout" in client.config,false);});
+test("require SSL never falls back",async()=>{let attempts=0;class FakeClient{constructor(){attempts++}async connect(){throw new Error("The server does not support SSL connections")}async end(){}}await assert.rejects(()=>connectPostgreSqlClient({host:"db",database:"x",user:"u",sslMode:"require"},"p",1000,FakeClient));assert.equal(attempts,1);});

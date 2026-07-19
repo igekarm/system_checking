@@ -1,0 +1,1 @@
+{"name":"@db-tools/update-core","version":"0.1.0","type":"module","exports":"./src/index.js","scripts":{"test":"node --test"},"dependencies":{"@db-tools/update-contracts":"*"}}
