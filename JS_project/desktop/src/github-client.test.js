@@ -14,3 +14,12 @@ test("public release errors do not request user authorization",async()=>{
   const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async()=>new Response("not found",{status:404})});
   await assert.rejects(client.request("https://api.github.com/test"),/public release request failed \(404\)/);
 });
+
+test("downloads manifest through its public browser URL",async()=>{
+  const urls=[];
+  const release={draft:false,prerelease:false,tag_name:"app-v0.1.6",assets:[{name:"latest-win-x64-stable.json",url:"https://api.github.com/private-style-url",browser_download_url:"https://github.com/public-manifest"}]};
+  const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async(url)=>{urls.push(url);return urls.length===1?new Response(JSON.stringify([release]),{status:200}):new Response(JSON.stringify({version:"0.1.6"}),{status:200});}});
+  const value=await client.latestRelease();
+  assert.equal(value.manifest.version,"0.1.6");
+  assert.equal(urls[1],"https://github.com/public-manifest");
+});

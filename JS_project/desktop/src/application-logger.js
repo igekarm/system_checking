@@ -21,5 +21,5 @@ export class ApplicationLogger {
   }
   info(event,details){return this.write("info",event,details);}
   warn(event,details){return this.write("warn",event,details);}
-  error(event,error,details={}){return this.write("error",event,{...details,error:safeDetails(error)});}
+  error(event,error,details={}){const diagnostic=event.startsWith("update.")?String(error?.message??error).replace(/(Bearer\s+|token[=: ]+)[^\s]+/gi,"$1[REDACTED]").slice(0,500):undefined;return this.write("error",event,{...details,error:safeDetails(error),...(diagnostic?{diagnostic}: {})});}
 }
