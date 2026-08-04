@@ -15,20 +15,21 @@ test("public release errors do not request user authorization",async()=>{
   await assert.rejects(client.request("https://api.github.com/test"),/public release request failed \(404\)/);
 });
 
-test("downloads manifest through its public browser URL",async()=>{
+test("stable updates use permanent release URLs without GitHub API",async()=>{
   const urls=[];
-  const release={draft:false,prerelease:false,tag_name:"app-v0.1.6",assets:[{name:"latest-win-x64-stable.json",url:"https://api.github.com/private-style-url",browser_download_url:"https://github.com/public-manifest"}]};
-  const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async(url)=>{urls.push(url);return urls.length===1?new Response(JSON.stringify([release]),{status:200}):new Response(JSON.stringify({version:"0.1.6"}),{status:200});}});
+  const manifest={version:"0.2.2",asset:{name:"DB-Tools-0.2.2-win-x64.exe"}};
+  const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async(url)=>{urls.push(url);return new Response(JSON.stringify(manifest),{status:200});}});
   const value=await client.latestRelease();
-  assert.equal(value.manifest.version,"0.1.6");
-  assert.equal(urls[1],"https://github.com/public-manifest");
+  assert.equal(value.manifest.version,"0.2.2");
+  assert.equal(urls.length,1);
+  assert.equal(urls[0],"https://github.com/igekarm/system_checking/releases/latest/download/latest-win-x64-stable.json");
+  assert.equal(value.assetUrl,"https://github.com/igekarm/system_checking/releases/download/app-v0.2.2/DB-Tools-0.2.2-win-x64.exe");
 });
 
-test("selects the highest semantic version regardless of GitHub order",async()=>{
-  const release=(version)=>({draft:false,prerelease:false,tag_name:`app-v${version}`,assets:[{name:"latest-win-x64-stable.json",browser_download_url:`https://github.com/manifest-${version}`}]});
-  const releases=[release("0.1.9"),release("0.1.8"),release("0.1.10")];
-  const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async(url)=>url.includes("releases?per_page")?new Response(JSON.stringify(releases),{status:200}):new Response(JSON.stringify({version:"0.1.10"}),{status:200})});
-  const value=await client.latestRelease();
-  assert.equal(value.release.tag_name,"app-v0.1.10");
-  assert.equal(value.manifest.version,"0.1.10");
+test("beta updates retain API release discovery",async()=>{
+  const release={draft:false,prerelease:true,tag_name:"app-v0.3.0-beta.1",body:"Beta",assets:[{name:"latest-win-x64-beta.json",browser_download_url:"https://github.com/beta-manifest"},{name:"DB-Tools-beta.exe",browser_download_url:"https://github.com/beta-installer"}]};
+  const client=new GitHubReleaseClient({owner:"igekarm",repo:"system_checking",fetchImpl:async(url)=>url.includes("releases?per_page")?new Response(JSON.stringify([release]),{status:200}):new Response(JSON.stringify({version:"0.3.0-beta.1",asset:{name:"DB-Tools-beta.exe"}}),{status:200})});
+  const value=await client.latestRelease("beta");
+  assert.equal(value.assetUrl,"https://github.com/beta-installer");
+  assert.equal(value.releaseNotes,"Beta");
 });

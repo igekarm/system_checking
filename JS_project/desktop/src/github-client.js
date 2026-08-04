@@ -1,5 +1,3 @@
-import { compareVersions } from "@db-tools/update-core";
-
 const API = "https://api.github.com";
 function releaseVersion(release){const match=/^app-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(String(release.tag_name??""));return match?.[1]??null;}
 export class GitHubReleaseClient {
@@ -20,13 +18,23 @@ export class GitHubReleaseClient {
     throw new Error("GitHub public release request failed");
   }
   async latestRelease(channel="stable") {
+    if(channel==="stable"){
+      const base=`https://github.com/${this.owner}/${this.repo}/releases/latest/download`;
+      const manifestResponse=await this.request(`${base}/latest-win-x64-stable.json`,{accept:"application/octet-stream"});
+      const manifest=await manifestResponse.json();
+      const releaseBase=`https://github.com/${this.owner}/${this.repo}/releases/download/app-v${encodeURIComponent(manifest.version??"")}`;
+      return {manifest,assetUrl:`${releaseBase}/${encodeURIComponent(manifest.asset?.name??"")}`,releaseNotes:""};
+    }
     const response=await this.request(`${API}/repos/${this.owner}/${this.repo}/releases?per_page=20`); const releases=await response.json();
-    const candidates=releases.filter((item)=>!item.draft && releaseVersion(item) && (channel==="beta" ? item.prerelease : !item.prerelease)).sort((left,right)=>compareVersions(releaseVersion(right),releaseVersion(left)));
+    const candidates=releases.filter((item)=>!item.draft && releaseVersion(item) && item.prerelease);
     const release=candidates[0];
     if (!release) return null; const manifestAsset=release.assets.find((asset)=>asset.name===`latest-win-x64-${channel}.json`);
     if (!manifestAsset) throw new Error("Release does not contain a signed update manifest");
     const manifestResponse=await this.request(manifestAsset.browser_download_url,{accept:"application/octet-stream"});
-    return { release, manifest:await manifestResponse.json() };
+    const manifest=await manifestResponse.json();
+    const releaseAsset=release.assets.find((asset)=>asset.name===manifest.asset?.name);
+    if(!releaseAsset)throw new Error("Installer asset declared by manifest was not found");
+    return {release,manifest,assetUrl:releaseAsset.browser_download_url,releaseNotes:release.body??""};
   }
   async downloadAsset(assetUrl) { return this.request(assetUrl,{accept:"application/octet-stream"}); }
 }
