@@ -12,11 +12,11 @@ export class AppService {
   constructor(userDataPath,{logger}={}){
     this.connections=new JsonStore(userDataPath,"connections",[]);
     this.queries=new JsonStore(userDataPath,"queries",[]);
-    this.settings=new JsonStore(userDataPath,"settings",{theme:"dark",defaultTimeoutMs:15000,rowLimit:1000,enabledProviders:["postgresql"]});
+    this.settings=new JsonStore(userDataPath,"settings",{theme:"dark",defaultTimeoutMs:15000,rowLimit:1000,enabledProviders:["postgresql"],oracleClientDir:""});
     this.history=new JsonStore(userDataPath,"history",[]);
     this.secrets=new SecretStore(userDataPath);
     this.providerInstaller=new ProviderInstaller(userDataPath,{logger});
-    this.providers={postgresql:new PostgreSqlProvider(this.secrets),oracle:new OracleProvider(this.secrets,this.providerInstaller)};
+    this.providers={postgresql:new PostgreSqlProvider(this.secrets),oracle:new OracleProvider(this.secrets,this.providerInstaller,()=>this.getSettings())};
   }
   async listProviders(){return this.providerInstaller.list();}
   async installProvider(providerId){return this.providerInstaller.install(providerId);}
@@ -51,7 +51,7 @@ export class AppService {
   async saveQuery(input){const value={id:input.id||randomUUID(),name:clean(input.name),sql:String(input.sql??""),providerId:input.providerId||"postgresql",connectionId:input.connectionId||null,updatedAt:new Date().toISOString()};if(!value.name||!value.sql.trim())throw new Error("Название и SQL обязательны");await this.queries.update((items)=>[value,...items.filter((item)=>item.id!==value.id)]);return value;}
   async deleteQuery(id){await this.queries.update((items)=>items.filter((item)=>item.id!==id));return true;}
   async getSettings(){const value=await this.settings.read();return {...value,enabledProviders:Array.from(new Set(["postgresql",...(value.enabledProviders??[]).filter((id)=>KNOWN_PROVIDERS.has(id))]))};}
-  async saveSettings(input){const installed=await this.providerInstaller.list();const available=new Set(installed.filter((item)=>item.installed).map((item)=>item.id));const enabledProviders=Array.from(new Set(["postgresql",...(input.enabledProviders??[]).filter((id)=>available.has(id))]));const value={theme:input.theme==="light"?"light":"dark",defaultTimeoutMs:Math.max(1000,Math.min(Number(input.defaultTimeoutMs)||15000,300000)),rowLimit:Math.max(1,Math.min(Number(input.rowLimit)||1000,10000)),enabledProviders};await this.settings.write(value);return value;}
+  async saveSettings(input){const installed=await this.providerInstaller.list();const available=new Set(installed.filter((item)=>item.installed).map((item)=>item.id));const enabledProviders=Array.from(new Set(["postgresql",...(input.enabledProviders??[]).filter((id)=>available.has(id))]));const value={theme:input.theme==="light"?"light":"dark",defaultTimeoutMs:Math.max(1000,Math.min(Number(input.defaultTimeoutMs)||15000,300000)),rowLimit:Math.max(1,Math.min(Number(input.rowLimit)||1000,10000)),enabledProviders,oracleClientDir:clean(input.oracleClientDir)};await this.settings.write(value);return value;}
   async listHistory(){return this.history.read();}
   async execute(input){const profile=await this.findConnection(input.connectionId);await this.ensureProviderEnabled(profile.providerId);const settings=await this.getSettings();const startedAt=new Date().toISOString();try{const result=await this.providers[profile.providerId].execute({...input,profile,timeoutMs:input.timeoutMs??settings.defaultTimeoutMs,rowLimit:input.rowLimit??settings.rowLimit});await this.addHistory({id:input.requestId,connectionId:profile.id,connectionName:profile.name,sql:input.sql,startedAt,durationMs:result.durationMs,ok:true,rowCount:result.rowCount});return result}catch(error){await this.addHistory({id:input.requestId,connectionId:profile.id,connectionName:profile.name,sql:input.sql,startedAt,ok:false,error:error.message});throw error}}
   async cancel({requestId,connectionId}){const profile=await this.findConnection(connectionId);return this.providers[profile.providerId].cancel(requestId);}

@@ -1,0 +1,24 @@
+name: Check DB Tools desktop
+on:
+  pull_request:
+    paths: ["JS_project/**", ".github/workflows/check-js-desktop.yml"]
+  push:
+    branches: [master]
+    paths: ["JS_project/**", ".github/workflows/check-js-desktop.yml"]
+permissions:
+  contents: read
+defaults:
+  run:
+    working-directory: JS_project
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: JS_project/package-lock.json
+      - run: npm ci
+      - run: npm run check

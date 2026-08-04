@@ -2,6 +2,11 @@
 
 ## Следующая версия
 
+- Добавлен Oracle Thick mode с настраиваемым Oracle Instant Client 19 x64 для Oracle Database 11.2 и новее.
+- Thin mode сохранён как вариант без Oracle Client для Oracle Database 12.1 и новее.
+- Тест подключения Oracle теперь показывает фактический режим, версии сервера и клиента.
+- Добавлена понятная диагностика `NJS-138`, `DPI-1047` и необходимости перезапуска после смены Oracle runtime.
+- Добавлен GitHub Actions workflow проверки тестов и сборки при push и pull request.
 - Добавлен опциональный Oracle Database provider в режиме Thin.
 - В настройках появился выбор поддерживаемых СУБД и подтверждение загрузки Oracle provider с официального npm Registry.
 - Архив Oracle provider проверяется по закреплённой SHA-512, имени и версии пакета.

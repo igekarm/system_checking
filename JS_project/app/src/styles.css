@@ -494,6 +494,9 @@ aside {
 .provider-notice li {
   color: var(--muted);
 }
+.oracle-runtime-settings { margin: 8px 10px 2px 42px; padding: 12px; border-left: 2px solid var(--accent); background: var(--control); }
+.oracle-runtime-settings .field { margin-bottom: 7px; }
+.oracle-runtime-settings > small { display: block; color: var(--muted); line-height: 1.45; }
 .provider-notice {
   color: var(--text);
   line-height: 1.5;

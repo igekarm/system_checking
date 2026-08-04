@@ -81,7 +81,7 @@ function ConnectionModal({ initial, enabledProviders, onSaved, onClose }) {
     try {
       const value = await desktop.connections.test(form);
       setMessage(
-        `Подключено за ${value.durationMs} мс · ${value.database ?? form.serviceName ?? form.sid ?? "Oracle"} · ${value.user}${value.mode ? ` · ${value.mode}` : ` · ${value.sslUsed ? "SSL" : "без SSL"}`}`,
+        `Подключено за ${value.durationMs} мс · ${value.database ?? form.serviceName ?? form.sid ?? "Oracle"} · ${value.user}${value.mode ? ` · ${value.mode}${value.serverVersion ? ` · сервер ${value.serverVersion}` : ""}${value.clientVersion ? ` · клиент ${value.clientVersion}` : ""}` : ` · ${value.sslUsed ? "SSL" : "без SSL"}`}`,
       );
     } catch (error) {
       setMessage(cleanError(error));
@@ -233,8 +233,8 @@ function ConnectionModal({ initial, enabledProviders, onSaved, onClose }) {
       </div>
       {oracle && (
         <small className="form-hint">
-          Используется Oracle Thin mode. Для Oracle Database 12.1 и новее Oracle
-          Client не требуется.
+          Режим Oracle выбирается настройками приложения: Thin поддерживает Database
+          12.1+, Thick с Instant Client 19 — Database 11.2+.
         </small>
       )}
       {message && <div className="form-message">{message}</div>}
@@ -342,8 +342,8 @@ function OracleInstallModal({ provider, onInstalled, onClose }) {
           версию пакета.
         </p>
         <ul>
-          <li>Режим: Thin (без Oracle Instant Client)</li>
-          <li>Поддерживаемая БД: Oracle Database 12.1 и новее</li>
+          <li>Thin без Oracle Client: Oracle Database 12.1 и новее</li>
+          <li>Thick с Oracle Instant Client 19 x64: Oracle Database 11.2 и новее</li>
           <li>Размер после распаковки: около 3,9 МБ</li>
         </ul>
         <code>{provider?.source}</code>
@@ -371,6 +371,7 @@ function SettingsModal({ settings, onSaved, onClose }) {
   const [form, setForm] = useState({
     ...settings,
     enabledProviders: settings.enabledProviders ?? ["postgresql"],
+    oracleClientDir: settings.oracleClientDir ?? "",
   });
   const [info, setInfo] = useState(null);
   const [providers, setProviders] = useState([]);
@@ -452,6 +453,14 @@ function SettingsModal({ settings, onSaved, onClose }) {
               <small>Встроен и доступен по умолчанию</small>
             </span>
           </label>
+          {form.enabledProviders.includes("oracle") && (
+            <div className="oracle-runtime-settings">
+              <Field label="Oracle Instant Client 19 (необязательно)">
+                <input value={form.oracleClientDir} placeholder="C:\\oracle\\instantclient_19_28" onChange={(e) => setForm({ ...form, oracleClientDir: e.target.value })} />
+              </Field>
+              <small>Оставьте поле пустым для Thin mode (Oracle 12.1+). Укажите каталог, содержащий oci.dll, для Thick mode и Oracle 11.2+. После изменения пути перезапустите приложение.</small>
+            </div>
+          )}
           <label className="provider-choice">
             <input
               type="checkbox"
@@ -528,6 +537,7 @@ export function App() {
       defaultTimeoutMs: 15000,
       rowLimit: 1000,
       enabledProviders: ["postgresql"],
+      oracleClientDir: "",
     });
   const [connectionId, setConnectionId] = useState("");
   const [sql, setSql] = useState("select current_timestamp;");
