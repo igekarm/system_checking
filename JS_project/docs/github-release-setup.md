@@ -67,13 +67,7 @@ git push -u origin master
 
 Repository secrets:
 
-- `UPDATE_SIGNING_PRIVATE_KEY_BASE64` — используйте тот же Ed25519 private key, который применялся ранее;
-- `WINDOWS_CERTIFICATE_BASE64`;
-- `WINDOWS_CERTIFICATE_PASSWORD`.
-
-Repository variable:
-
-- `DB_TOOLS_WINDOWS_PUBLISHER_SUBJECT` — точный Subject сертификата.
+- `UPDATE_SIGNING_PRIVATE_KEY_BASE64` — используйте тот же Ed25519 private key, который применялся ранее.
 
 `DB_TOOLS_GITHUB_APP_CLIENT_ID` создавать не нужно. Старый GitHub App Device Flow новому репозиторию не требуется.
 
