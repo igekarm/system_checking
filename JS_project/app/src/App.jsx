@@ -426,13 +426,14 @@ function SettingsModal({ settings, onSaved, onClose }) {
           <Field label="Timeout запроса, мс">
             <input
               type="number"
-              min="1000"
-              max="300000"
+              min="0"
+              max="3600000"
               value={form.defaultTimeoutMs}
               onChange={(e) =>
                 setForm({ ...form, defaultTimeoutMs: e.target.value })
               }
             />
+            <small className="form-hint">0 — без ограничения; максимум 3 600 000 мс (1 час)</small>
           </Field>
           <Field label="Лимит строк">
             <input
